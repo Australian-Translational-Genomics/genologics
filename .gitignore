@@ -14,3 +14,5 @@ docs/*.html
 scripts/*.csv
 scripts/*.log
 scripts/*.out
+.cache/
+.idea/
