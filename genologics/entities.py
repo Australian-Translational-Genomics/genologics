@@ -881,14 +881,14 @@ class ProtocolStep(Entity):
 
     _TAG = 'step'
 
-    name                = StringAttributeDescriptor("name")
-    type                = EntityDescriptor('type', Processtype)
-    permittedcontainers = NestedStringListDescriptor('container-type', 'container-types')
-    queue_fields        = NestedAttributeListDescriptor('queue-field', 'queue-fields')
-    step_fields         = NestedAttributeListDescriptor('step-field', 'step-fields')
-    sample_fields       = NestedAttributeListDescriptor('sample-field', 'sample-fields')
-    step_properties     = NestedAttributeListDescriptor('step_property', 'step_properties')
-    epp_triggers        = NestedAttributeListDescriptor('epp_trigger', 'epp_triggers')
+    name                 = StringAttributeDescriptor('name')
+    type                 = EntityDescriptor('process-type', Processtype)
+    permitted_containers = NestedStringListDescriptor('container-type', 'permitted-containers')
+    queue_fields         = NestedAttributeListDescriptor('queue-field', 'queue-fields')
+    step_fields          = NestedAttributeListDescriptor('step-field', 'step-fields')
+    sample_fields        = NestedAttributeListDescriptor('sample-field', 'sample-fields')
+    step_properties      = NestedAttributeListDescriptor('step-property', 'step-properties')
+    epp_triggers         = NestedAttributeListDescriptor('epp-trigger', 'epp-triggers')
 
 
 class Protocol(Entity):
