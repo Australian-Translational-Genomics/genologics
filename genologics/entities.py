@@ -401,6 +401,22 @@ class Project(Entity):
     # permissions XXX
 
 
+class Controltype(Entity):
+    """Control sample."""
+
+    _URI = 'controltypes'
+    _TAG = 'control-type'
+    _PREFIX = 'ctrltp'
+
+    name                = StringAttributeDescriptor('name')
+    supplier            = StringDescriptor('supplier')
+    catalogue_number    = StringDescriptor('catalogue-number')
+    website             = StringDescriptor('website')
+    concentration       = StringDescriptor('concentration')
+    archived            = BooleanDescriptor('archived')
+    single_step         = BooleanDescriptor('single-step')
+
+
 class Sample(Entity):
     "Customer's sample to be analyzed; associated with a project."
 
@@ -419,6 +435,7 @@ class Sample(Entity):
     files          = EntityListDescriptor(nsmap('file:file'), File)
     externalids    = ExternalidListDescriptor()
     # biosource XXX
+    control_type   = EntityDescriptor('control-type', Controltype)
 
 
     @classmethod
