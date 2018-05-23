@@ -98,9 +98,12 @@ class Lims(object):
         else:
             raise ValueError("id or uri required")
         url = urljoin(self.baseuri, '/'.join(segments))
-        r = self.request_session.get(url, auth=(self.username, self.password), timeout=TIMEOUT)
+        r = self.request_session.get(url, auth=(self.username, self.password), timeout=TIMEOUT, stream=True)
         self.validate_response(r)
-        return r.text
+        if 'text' in r.headers['Content-Type']:
+            return r.text
+        else:
+            return r.raw
 
     def upload_new_file(self, entity, file_to_upload):
         """Upload a file and attach it to the provided entity."""
@@ -153,6 +156,16 @@ class Lims(object):
                           headers={'content-type': 'application/xml',
                                    'accept': 'application/xml'})
         return self.parse_response(r, accept_status_codes=[200, 201, 202])
+
+    def delete(self, uri, params=dict()):
+        """sends a DELETE to the given URI.
+        Return the response XML as an ElementTree.
+        """
+        r = requests.delete(uri, params=params,
+                          auth=(self.username, self.password),
+                          headers={'content-type': 'application/xml',
+                                   'accept': 'application/xml'})
+        return self.validate_response(r, accept_status_codes=[204])
 
     def check_version(self):
         """Raise ValueError if the version for this interface
@@ -362,6 +375,13 @@ class Lims(object):
         else:
             return self._get_instances(Artifact, params=params)
 
+    def get_container_types(self, name=None, start_index=None):
+        """Get a list of container types, filtered by keyword arguments.
+        name: Container Type name.
+        start-index: Page to retrieve, all if None."""
+        params = self._get_params(name=name, start_index=start_index)
+        return self._get_instances(Containertype, params=params)
+
     def get_containers(self, name=None, type=None,
                        state=None, last_modified=None,
                        udf=dict(), udtname=None, udt=dict(), start_index=None,
@@ -451,6 +471,11 @@ class Lims(object):
         params = self._get_params(name=name, kitname=kitname, number=number,
                                   start_index=start_index)
         return self._get_instances(ReagentLot, params=params)
+
+    def get_instruments(self, name=None):
+        """Returns a list of Instruments, can be filtered by name"""
+        params = self._get_params(name=name)
+        return self._get_instances(Instrument, params=params)
 
     def _get_params(self, **kwargs):
         "Convert keyword arguments to a kwargs dictionary."

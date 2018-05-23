@@ -18,6 +18,7 @@ def _config_compatibility():
 
     return config, parser_read_file
 
+
 '''
 Usage:
 from genologics.config import BASEURI, USERNAME, PASSWORD
@@ -62,8 +63,7 @@ def load_config(specified_config = None):
             config_file = conf_file[0]
 
         except:
-            warnings.warn("Please make sure you've created or indicated your own Genologics configuration file (i.e: ~/.genologicsrc) as stated in README.md")
-            sys.exit(-1)
+            return None, None, None, None, None
 
     BASEURI, USERNAME, PASSWORD, VERSION, MAIN_LOG = get_config_info(config_file)
 

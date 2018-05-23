@@ -11,7 +11,9 @@ from genologics.descriptors import StringDescriptor, StringDictionaryDescriptor,
     UdtDictionaryDescriptor, ExternalidListDescriptor, EntityDescriptor, BooleanDescriptor, EntityListDescriptor, \
     StringAttributeDescriptor, StringListDescriptor, DimensionDescriptor, IntegerDescriptor, \
     PlacementDictionaryDescriptor, InputOutputMapList, LocationDescriptor, ReagentLabelList, NestedEntityListDescriptor, \
-    NestedStringListDescriptor, NestedAttributeListDescriptor, IntegerAttributeDescriptor
+    NestedStringListDescriptor, NestedAttributeListDescriptor, IntegerAttributeDescriptor, NestedStringDescriptor, \
+    NestedBooleanDescriptor, MultiPageNestedEntityListDescriptor, ProcessTypeParametersDescriptor, \
+    ProcessTypeProcessInputDescriptor, ProcessTypeProcessOutputDescriptor, NamedStringDescriptor
 
 try:
     from urllib.parse import urlsplit, urlparse, parse_qs, urlunparse
@@ -296,9 +298,14 @@ class Entity(object):
         data = self.lims.tostring(ElementTree.ElementTree(self.root))
         self.lims.post(self.uri, data)
 
+    def xml(self):
+        return self.lims.tostring(ElementTree.ElementTree(self.root))
+
     @classmethod
-    def _create(cls, lims, creation_tag=None, **kwargs):
+    def _create(cls, lims, creation_tag=None, udfs=None, **kwargs):
         """Create an instance from attributes and return it"""
+        if not udfs:
+            udfs={}
         instance = cls(lims, _create_new=True)
         if creation_tag:
             instance.root = ElementTree.Element(nsmap(cls._PREFIX + ':' + creation_tag))
@@ -306,6 +313,8 @@ class Entity(object):
             instance.root = ElementTree.Element(nsmap(cls._PREFIX + ':' + cls._TAG))
         else:
             instance.root = ElementTree.Element(nsmap(cls._PREFIX + ':' + cls.__name__.lower()))
+        for key in udfs:
+            instance.udf[key]=udfs[key]
         for attribute in kwargs:
             if hasattr(instance, attribute):
                 setattr(instance, attribute, kwargs.get(attribute))
@@ -317,12 +326,25 @@ class Entity(object):
     @classmethod
     def create(cls, lims, creation_tag=None, **kwargs):
         """Create an instance from attributes then post it to the LIMS"""
-        instance = cls._create(lims, creation_tag=None, **kwargs)
+        instance = cls._create(lims, creation_tag=creation_tag, **kwargs)
         data = lims.tostring(ElementTree.ElementTree(instance.root))
         instance.root = lims.post(uri=lims.get_uri(cls._URI), data=data)
         instance._uri = instance.root.attrib['uri']
         return instance
 
+
+class Instrument(Entity):
+    """Lab Instrument
+    """
+    _URI = "instruments"
+    _TAG = "instrument"
+    _PREFIX = "inst"
+
+    name = StringDescriptor('name')
+    type = StringDescriptor('type')
+    serial_number = StringDescriptor('serial-number')
+    expiry_date = StringDescriptor('expiry-date')
+    archived = BooleanDescriptor('archived')
 
 class Lab(Entity):
     "Lab; container of researchers."
@@ -337,7 +359,6 @@ class Lab(Entity):
     udt              = UdtDictionaryDescriptor()
     externalids      = ExternalidListDescriptor()
     website          = StringDescriptor('website')
-
 
 class Researcher(Entity):
     "Person; client scientist or lab personnel. Associated with a lab."
@@ -357,10 +378,25 @@ class Researcher(Entity):
     externalids = ExternalidListDescriptor()
 
     # credentials XXX
+    username = NestedStringDescriptor('username', 'credentials')
+    account_locked = NestedBooleanDescriptor('account-locked', 'credentials')
 
     @property
     def name(self):
         return "%s %s" % (self.first_name, self.last_name)
+
+class Permission(Entity):
+    """A Clarity permission. Only supports GET"""
+    name = StringDescriptor('name')
+    action = StringDescriptor('action')
+    description = StringDescriptor('description')
+
+
+class Role(Entity):
+    """Clarity Role, hosting permissions"""
+    name = StringDescriptor('name')
+    researchers = NestedEntityListDescriptor('researcher', Researcher, 'researchers')
+    permissions = NestedEntityListDescriptor('permission', Permission, 'permissions')
 
 
 class Reagent_label(Entity):
@@ -387,6 +423,7 @@ class Project(Entity):
     "Project concerning a number of samples; associated with a researcher."
 
     _URI = 'projects'
+    _TAG = 'project'
     _PREFIX = 'prj'
 
     name         = StringDescriptor('name')
@@ -421,6 +458,7 @@ class Sample(Entity):
     "Customer's sample to be analyzed; associated with a project."
 
     _URI = 'samples'
+    _TAG = 'sample'
     _PREFIX = 'smp'
 
     name           = StringDescriptor('name')
@@ -439,11 +477,13 @@ class Sample(Entity):
 
 
     @classmethod
-    def create(cls, lims, container, position, **kwargs):
+    def create(cls, lims, container, position, udfs=None, **kwargs):
         """Create an instance of Sample from attributes then post it to the LIMS"""
+        if udfs is None:
+            udfs = {}
         if not isinstance(container, Container):
             raise TypeError('%s is not of type Container'%container)
-        instance = super(Sample, cls)._create(lims, creation_tag='samplecreation', **kwargs)
+        instance = super(Sample, cls)._create(lims, creation_tag='samplecreation',udfs=udfs, **kwargs)
 
         location = ElementTree.SubElement(instance.root, 'location')
         ElementTree.SubElement(location, 'container', dict(uri=container.uri))
@@ -473,6 +513,7 @@ class Container(Entity):
     "Container for analyte artifacts."
 
     _URI = 'containers'
+    _TAG = 'container'
     _PREFIX = 'con'
 
     name           = StringDescriptor('name')
@@ -490,14 +531,10 @@ class Container(Entity):
         self.lims.get_batch(list(result.values()))
         return result
 
+    def delete(self):
+        self.lims.delete(self.uri)
 
-class Processtype(Entity):
-    _TAG = 'process-type'
-    _URI = 'processtypes'
-    _PREFIX = 'ptp'
 
-    name = StringAttributeDescriptor('name')
-    # XXX
 
 
 class Udfconfig(Entity):
@@ -515,9 +552,28 @@ class Udfconfig(Entity):
     is_required                   = BooleanDescriptor('is-required')
     is_deviation                  = BooleanDescriptor('is-deviation') 
     is_controlled_vocabulary      = BooleanDescriptor('is-controlled-vocabulary')
-    presets                       = StringListDescriptor('preset') 
+    presets                       = StringListDescriptor('preset')
 
 
+class Processtype(Entity):
+    _TAG = 'process-type'
+    _URI = 'processtypes'
+    _PREFIX = 'ptp'
+
+    def __init__(self, lims, uri=None, id=None, _create_new=False):
+        super(Processtype, self).__init__(lims, uri, id, _create_new)
+        self.parameters = ProcessTypeParametersDescriptor(self)
+
+    name = StringAttributeDescriptor('name')
+    field_definition = EntityListDescriptor('field-definition', Udfconfig)
+    process_inputs = ProcessTypeProcessInputDescriptor()
+    process_outputs = ProcessTypeProcessOutputDescriptor()
+    process_type_attribute = NamedStringDescriptor('process-type-attribute')
+
+
+    @property
+    def process_input(self):
+        return self.process_inputs[0]
 
 class Process(Entity):
     "Process (instance of Processtype) executed producing ouputs from inputs."
@@ -534,8 +590,8 @@ class Process(Entity):
     udt               = UdtDictionaryDescriptor()
     files             = EntityListDescriptor(nsmap('file:file'), File)
     process_parameter = StringDescriptor('process-parameter')
+    instrument        = EntityDescriptor('instrument', Instrument)
 
-    # instrument XXX
     # process_parameters XXX
 
     def outputs_per_input(self, inart, ResultFile=False, SharedResultFile=False, Analyte=False):
@@ -637,6 +693,7 @@ class Artifact(Entity):
     "Any process input or output; analyte or file."
 
     _URI = 'artifacts'
+    _TAG = 'artifact'
     _PREFIX = 'art'
 
     name           = StringDescriptor('name')
@@ -708,6 +765,87 @@ class Artifact(Entity):
     workflow_stages_and_statuses = property(_get_workflow_stages_and_statuses)
 
 
+class StepPools(Entity):
+    """Pools from within a step. Supports POST
+    pools : [ {'output' : output_art, 'name' : 'AAAA', 'inputs':[input_art_1, input_art_2, ...]}, ...]
+    available_inputs : {input1:{'replicates':N}}
+    When POSTing, only pools need to be updated, available_inputs can be left as is.
+    In pools, output can be left blank, Clarity will generate an output artifact. """
+
+    _pools = None
+    _available_inputs = None
+
+    def _remove_available_inputs(self, input_art):
+        """ removes an input from the available inputs, one replicate at a time
+        """
+        self.get_available_inputs()
+        rep = self._available_inputs.get(input_art, {'replicates': 0}).get('replicates', 1)
+        if rep > 1:
+            self._available_inputs[input_art]['replicates'] = rep - 1
+        elif rep == 1:
+            del(self._available_inputs[input_art])
+        else:
+            logger.info("using more inputs than replicates for input {0}".format(input_art.uri))
+        self.available_inputs = self._available_inputs
+
+    def set_available_inputs(self, available_inputs):
+        available_inputs_root = self.root.find("available-inputs")
+        available_inputs_root.clear()
+        for input_art in available_inputs:
+            current_elem = ElementTree.SubElement(available_inputs_root, "input")
+            current_elem.attrib['uri'] = input_art.uri
+            current_elem.attrib['replicates'] = str(available_inputs[input_art]['replicates'])
+        self._available_inputs = available_inputs
+
+    def get_available_inputs(self):
+        if not self._available_inputs:
+            self.get()
+            self._available_inputs = {}
+            for ai_node in self.root.find("available-inputs").findall("input"):
+                input = Artifact(self.lims, uri=ai_node.attrib['uri'])
+                self._available_inputs[input] = {}
+                if 'replicates' in ai_node.attrib:
+                    self._available_inputs[input]['replicates'] = int(ai_node.attrib['replicates'])
+
+        return self._available_inputs
+
+    def get_pools(self):
+        if not self._pools:
+            self.get()
+            self._pools = []
+
+            for idx, pool_node in enumerate(self.root.find("pooled-inputs").findall("pool")):
+                pool_name = pool_node.attrib.get('name', "Pool #{0}".format(idx+1))
+                pool_object = {'name': pool_name, 'inputs': [], 'output': None}
+                if pool_node.attrib.get('output-uri', False):
+                    pool_object['output'] = Artifact(self.lims, uri=pool_node.attrib['output-uri'])
+                for input_node in pool_node.findall("input"):
+                    input = Artifact(self.lims, uri=input_node.attrib['uri'])
+                    pool_object['inputs'].append(input)
+
+                self._pools.append(pool_object)
+
+        return self._pools
+
+    def set_pools(self, pools):
+        pool_root = self.root.find("pooled-inputs")
+        pool_root.clear()
+        for idx, pool_obj in enumerate(pools):
+            current_pool = ElementTree.SubElement(pool_root, 'pool')
+            if pool_obj.get('output', False):
+                current_pool.attrib['output-uri'] = pool_obj['output'].uri
+            current_pool.attrib['name'] = pool_obj.get('name', 'Pool #{0}'.format(idx+1))
+            for input_art in pool_obj.get('inputs', []):
+                current_input = ElementTree.SubElement(current_pool, 'input')
+                current_input.attrib['uri'] = input_art.uri
+                self._remove_available_inputs(input_art)
+
+        self._pools = pools
+
+    pools = property(get_pools, set_pools)
+    available_inputs = property(get_available_inputs, set_available_inputs)
+
+
 class StepPlacements(Entity):
     """Placements from within a step. Supports POST"""
     _placementslist = None
@@ -721,7 +859,7 @@ class StepPlacements(Entity):
             for node in self.root.find('output-placements').findall('output-placement'):
                 input = Artifact(self.lims, uri=node.attrib['uri'])
                 location = (None, None)
-                if node.find('location'):
+                if node.find('location') is not None:
                     location = (
                         Container(self.lims, uri=node.find('location').find('container').attrib['uri']),
                         node.find('location').find('value').text
@@ -836,6 +974,14 @@ class StepActions(Entity):
     next_actions = property(get_next_actions, set_next_actions)
 
 
+class StepProgramStatus(Entity):
+    """Allows custom handling of program status.
+    message supports HTML. Cross handling of EPPs is possible.
+    Supports PUT"""
+    status = StringDescriptor('status')
+    message = StringDescriptor('message')
+
+
 class ReagentKit(Entity):
     """Type of Reagent with information about the provider"""
     _URI = "reagentkits"
@@ -888,10 +1034,11 @@ class Step(Entity):
     actions       = EntityDescriptor('actions', StepActions)
     placements    = EntityDescriptor('placements', StepPlacements)
     details       = EntityDescriptor('details', StepDetails)
-
-    #program_status     = EntityDescriptor('program-status',StepProgramStatus)
+    step_pools         = EntityDescriptor('pools', StepPools)
+    program_status     = EntityDescriptor('program-status', StepProgramStatus)
 
     def advance(self):
+        self.get()
         self.root = self.lims.post(
             uri="{}/advance".format(self.uri),
             data=self.lims.tostring(ElementTree.ElementTree(self.root))
@@ -964,17 +1111,21 @@ class ReagentType(Entity):
                     if child.attrib.get("name") == "Sequence":
                         self.sequence = child.attrib.get("value")
 
+
 class Queue(Entity):
-    """Queue of a given step"""
+    """Queue of a given step. Will recursively get all the pages of artifacts, and therefore, can be quite slow to load"""
     _URI = "queues"
     _TAG= "queue"
     _PREFIX = "que"
 
-    artifacts=NestedEntityListDescriptor("artifact", Artifact, "artifacts")
+
+    artifacts = MultiPageNestedEntityListDescriptor("artifact", Artifact, "artifacts")
 
 Sample.artifact          = EntityDescriptor('artifact', Artifact)
 StepActions.step         = EntityDescriptor('step', Step)
 Stage.workflow           = EntityDescriptor('workflow', Workflow)
 Artifact.workflow_stages = NestedEntityListDescriptor('workflow-stage', Stage, 'workflow-stages')
 Step.configuration       = EntityDescriptor('configuration', ProtocolStep)
+StepProgramStatus.configuration = EntityDescriptor('configuration', ProtocolStep)
+Researcher.roles = NestedEntityListDescriptor('role', Role, 'credentials')
 
